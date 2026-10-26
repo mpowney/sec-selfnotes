@@ -30,6 +30,13 @@ SQLite stores only users, credentials/wrapped keys and note metadata (id, title,
 `POST /api/auth/register`, `/register/verify`, `/signin/challenge`, `/signin/verify`, `/logout`;
 `GET/POST /api/notes` (`?limit&offset&category`), `GET/PUT/DELETE /api/notes/:noteId`, `GET /api/notes/:noteId/metadata`, `GET /api/categories`.
 
+## Onboarding and admin portal
+
+- **First start**: a default `admin` account is created and its randomly generated password is printed **once** in the server log (`docker compose logs`). It is stored only as a bcrypt hash.
+- **First user**: open the app, choose the **Register** tab, enter a username and register your YubiKey/passkey (PRF-capable). Registration signs you in and creates your wrapped master key.
+- **Admin portal** at `/admin` (password login, separate from WebAuthn sessions; admin sessions cannot access notes). The dashboard lists users (created, last login, authenticator and note counts), lets admins revoke individual authenticators (never the last one) and delete users with their notes.
+- Admin API: `GET /api/admin/status`, `POST /login`, `/logout`, `GET /users`, `DELETE /users/:id`, `GET /users/:id/credentials`, `DELETE /users/:id/credentials/:credentialId`.
+
 ## Configuration
 
 See `.env.example`: `SYSTEM_ENCRYPTION_KEY` (64 hex chars), `SESSION_SECRET`, `PORT` (4000), `RP_ID`, `RP_ORIGIN`, `RP_NAME`, `DATA_DIR` (`./data`), `NODE_ENV`.

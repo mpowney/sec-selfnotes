@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import type { Config } from './config.js';
 import type { Db } from './db.js';
 import { authRouter, requireAuth } from './auth.js';
+import { adminRouter } from './admin.js';
 import { notesRouter } from './notes.js';
 import { NoteStorage } from './storage.js';
 import { SqliteSessionStore } from './sessionStore.js';
@@ -22,6 +23,7 @@ export function createApp(cfg: Config, db: Db) {
   });
   app.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false }));
   app.use('/api/auth', rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false }));
+  app.use('/api/admin', rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false }));
   // CSRF defence in addition to SameSite=strict cookies: state-changing requests must come from our origin
   app.use((req, res, next) => {
     const origin = req.headers.origin;
@@ -48,6 +50,7 @@ export function createApp(cfg: Config, db: Db) {
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
   app.use('/api/auth', authRouter(cfg, db));
+  app.use('/api/admin', adminRouter(db, storage));
   app.use('/api', requireAuth, notesRouter(db, storage));
 
   if (fs.existsSync(cfg.clientDir)) {

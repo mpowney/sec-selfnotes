@@ -14,6 +14,8 @@ declare module 'express-session' {
   interface SessionData {
     userId?: string;
     username?: string;
+    isAdmin?: boolean;
+    adminUsername?: string;
     challenge?: string;
     pendingUser?: { id: string; username: string };
   }
@@ -100,6 +102,10 @@ export function authRouter(cfg: Config, db: Db): Router {
           wrappedKey,
           now,
         );
+        db.prepare('INSERT OR REPLACE INTO user_logins (user_id, last_login_at) VALUES (?, ?)').run(
+          pendingUser.id,
+          now,
+        );
       })();
     } catch {
       return res.status(409).json({ error: 'Username or credential already registered' });
@@ -172,6 +178,10 @@ export function authRouter(cfg: Config, db: Db): Router {
     db.prepare('UPDATE credentials SET counter = ? WHERE id = ?').run(
       verification.authenticationInfo.newCounter,
       cred.id,
+    );
+    db.prepare('INSERT OR REPLACE INTO user_logins (user_id, last_login_at) VALUES (?, ?)').run(
+      cred.user_id,
+      Date.now(),
     );
     await startSession(req, cred.user_id, cred.username);
     res.json({ username: cred.username, wrappedKey: cred.wrapped_key });
