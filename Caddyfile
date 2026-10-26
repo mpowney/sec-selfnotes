@@ -1,3 +1,0 @@
-{$RP_ID:localhost} {
-	reverse_proxy selfnotes:4000
-}

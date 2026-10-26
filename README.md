@@ -51,7 +51,19 @@ docker compose up -d --build
 # multi-platform image: docker buildx build --platform linux/arm64,linux/amd64 .
 ```
 
-Caddy terminates TLS (see `Caddyfile`); data persists in `./data`.
+TLS is terminated by a separate Caddy instance (not part of this repo's compose file); the app listens on plain HTTP port 4000 and data persists in `./data`. See [Caddy reverse proxy](#caddy-reverse-proxy).
+
+### Caddy reverse proxy
+
+Configure your existing Caddy to proxy your domain to the app (TLS is assumed to be handled there already):
+
+```
+notes.example.com {
+	reverse_proxy <docker-host-ip-or-hostname>:4000
+}
+```
+
+Set `RP_ID=notes.example.com` and `RP_ORIGIN=https://notes.example.com` in `.env`; `RP_ORIGIN` must exactly match the URL used in the browser. If Caddy runs in Docker on the same host, either attach it to the same network and use `selfnotes:4000`, or use the host's IP and the published port 4000. Restrict port 4000 to the Caddy host (e.g. firewall) so it isn't reachable directly.
 
 ## Raspberry Pi Docker Deployment
 
@@ -102,21 +114,18 @@ nano .env
 #   RP_ID=notes.example.com                (your domain, no scheme)
 #   RP_ORIGIN=https://notes.example.com    (must match the browser URL exactly)
 
-# 4. set your domain in the Caddyfile (replace {$RP_ID:localhost} with your domain)
-nano Caddyfile
-
-# 5. build the image (native build on a 64-bit Pi produces linux/arm64)
+# 4. build the image (native build on a 64-bit Pi produces linux/arm64)
 docker compose build
 
-# 6. start in the background
+# 5. start in the background
 docker compose up -d
 
-# 7. check status, then open https://<your-domain>
+# 6. check status, then open https://<your-domain> (served via your separate Caddy)
 docker compose ps
 docker compose logs -f selfnotes
 ```
 
-Notes: the `caddy` service does not receive `.env` values, so set the domain directly in the `Caddyfile` as in step 4. Data is persisted in `./data` and Caddy certificates in the `caddy_data` volume.
+Notes: the app is published on port 4000; point your separate Caddy at it (see [Caddy reverse proxy](#caddy-reverse-proxy)). Data is persisted in `./data`.
 
 ### Manual Docker Build and Run (without Compose)
 
@@ -134,7 +143,7 @@ docker run -d --name selfnotes --restart unless-stopped \
   sec-selfnotes
 ```
 
-Without Caddy the app is served over plain HTTP on port 4000. WebAuthn only works on `localhost` or HTTPS, so put a TLS proxy in front for real use.
+The app is served over plain HTTP on port 4000. WebAuthn only works on `localhost` or HTTPS, so put your Caddy (or other TLS proxy) in front.
 
 ### Raspberry Pi Specific Configuration
 
@@ -145,17 +154,7 @@ docker buildx create --use
 docker buildx build --platform linux/arm64,linux/arm/v7 -t sec-selfnotes --load .   # --load supports a single platform; use --push with a registry for multi-platform
 ```
 
-**TLS/HTTPS with Caddy.** Caddy obtains and renews Let's Encrypt certificates automatically when:
-
-- the domain's DNS points to the Pi's public IP
-- ports 80 and 443 are forwarded to the Pi
-- `Caddyfile` contains your real domain, and `RP_ORIGIN` is `https://<domain>`
-
-```sh
-docker compose logs caddy   # watch certificate issuance
-```
-
-For LAN-only use, Caddy can issue internal certificates with `tls internal` inside the site block; browsers must then trust Caddy's local root CA.
+**TLS/HTTPS.** TLS is handled by your separate Caddy instance; see [Caddy reverse proxy](#caddy-reverse-proxy). Ensure its site block proxies to this Pi on port 4000 and that `RP_ORIGIN` is `https://<domain>`.
 
 ### Troubleshooting
 
@@ -183,11 +182,11 @@ Alternatively build the image on another machine (see above) and pull it on the 
 
 **Network and connectivity**
 ```sh
-docker compose ps                      # both services should be "running"
-curl -I http://localhost:80            # test locally on the Pi
-sudo ss -tlnp | grep -E ':(80|443)'    # check nothing else is bound to the ports
+docker compose ps                      # selfnotes should be "running"
+curl -I http://localhost:4000          # test locally on the Pi
+sudo ss -tlnp | grep ':4000'           # check the port is bound
 ```
-Check router port forwarding, DNS (`dig +short notes.example.com`) and any firewall (`sudo ufw status`).
+Check that Caddy can reach port 4000 on the Pi, DNS (`dig +short notes.example.com`) and any firewall (`sudo ufw status`).
 
 **WebAuthn / YubiKey problems**
 - `RP_ID` must be the bare domain and `RP_ORIGIN` must exactly match the URL in the browser (scheme, host, port).
@@ -206,7 +205,7 @@ If `npm ci` is killed during the build, add swap as above.
 ### Performance Optimization
 
 - Use an SSD (USB 3) instead of an SD card for `./data` and Docker's storage.
-- Limit resources in `docker-compose.yml` (e.g. `mem_limit: 512m` on `selfnotes`) so Caddy and the OS keep headroom.
+- Limit resources in `docker-compose.yml` (e.g. `mem_limit: 512m` on `selfnotes`) so the OS keeps headroom.
 - Set `NODE_OPTIONS=--max-old-space-size=<MB>` to roughly 50-60% of the memory available to the container.
 - Run the Pi headless (`sudo raspi-config` → boot to console) to free RAM.
 - Reclaim disk space regularly: `docker image prune -f`.
