@@ -2,9 +2,9 @@ import { useState } from 'react';
 import {
   Button, Card, Field, Input, MessageBar, MessageBarBody, Tab, TabList, Title2, Text,
 } from '@fluentui/react-components';
-import { register, signIn } from './webauthn';
+import { register, signIn, type Session } from './webauthn';
 
-export default function AuthPage({ onAuthenticated }: { onAuthenticated: (username: string, key: CryptoKey) => void }) {
+export default function AuthPage({ onAuthenticated }: { onAuthenticated: (username: string, session: Session) => void }) {
   const [tab, setTab] = useState<'signin' | 'register'>('signin');
   const [username, setUsername] = useState('');
   const [error, setError] = useState('');
@@ -16,8 +16,8 @@ export default function AuthPage({ onAuthenticated }: { onAuthenticated: (userna
     setBusy(true);
     try {
       const name = username.trim();
-      const key = tab === 'register' ? await register(name) : await signIn(name);
-      onAuthenticated(name, key);
+      const result = tab === 'register' ? await register(name) : await signIn(name);
+      onAuthenticated(name, result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Authentication failed');
     } finally {

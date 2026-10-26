@@ -27,6 +27,7 @@ SQLite stores only users, credentials/wrapped keys and note metadata (id, title,
 
 ## API
 
+`GET /api/auth/status`, `GET /api/auth/credentials`, `DELETE /api/auth/credentials/:id`, `PATCH /api/auth/credentials/:id/name`, `POST /api/auth/add-credential/start|finish`;
 `POST /api/auth/register`, `/register/verify`, `/signin/challenge`, `/signin/verify`, `/logout`;
 `GET/POST /api/notes` (`?limit&offset&category`), `GET/PUT/DELETE /api/notes/:noteId`, `GET /api/notes/:noteId/metadata`, `GET /api/categories`.
 
@@ -35,6 +36,8 @@ SQLite stores only users, credentials/wrapped keys and note metadata (id, title,
 - **First start**: a default `admin` account is created and its randomly generated password is printed **once** in the server log (`docker compose logs`). It is stored only as a bcrypt hash.
 - **First user**: open the app, choose the **Register** tab, enter a username and register your YubiKey/passkey (PRF-capable). Registration signs you in and creates your wrapped master key.
 - **Admin portal** at `/admin` (password login, separate from WebAuthn sessions; admin sessions cannot access notes). The dashboard lists users (created, last login, authenticator and note counts), lets admins revoke individual authenticators (never the last one) and delete users with their notes.
+- **Reload**: the server session survives a page reload (`GET /api/auth/status`), but the master key is memory-only, so you are asked to touch your authenticator to unlock your notes again.
+- **Authenticators** (header button): register additional authenticators (the master key is wrapped for each, with an optional name encrypted by the master key so only you can read it) and revoke your own authenticators other than the one in the current session or the last one.
 - Admin API: `GET /api/admin/status`, `POST /login`, `/logout`, `GET /users`, `DELETE /users/:id`, `GET /users/:id/credentials`, `DELETE /users/:id/credentials/:credentialId`.
 
 ## Configuration

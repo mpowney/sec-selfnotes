@@ -1,6 +1,6 @@
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import { api } from './api';
-import { PRF_SALT, createWrappedMasterKey, unwrapMasterKey } from './crypto';
+import { PRF_SALT, createWrappedMasterKey, encryptNote, unwrapMasterKey, wrapMasterKey } from './crypto';
 
 const prfInput = { prf: { eval: { first: PRF_SALT } } };
 
@@ -28,7 +28,7 @@ async function getPrfOutput(credentialId: string): Promise<ArrayBuffer> {
   return out;
 }
 
-export async function register(username: string): Promise<CryptoKey> {
+export async function register(username: string): Promise<Session> {
   const options = await api.post<any>('/api/auth/register', { username });
   options.extensions = { ...options.extensions, ...prfInput };
   const response = await startRegistration({ optionsJSON: options });
@@ -38,15 +38,33 @@ export async function register(username: string): Promise<CryptoKey> {
   secret ??= await getPrfOutput(response.id);
   const { masterKey, wrapped } = await createWrappedMasterKey(secret);
   await api.post('/api/auth/register/verify', { response, wrappedKey: wrapped });
-  return masterKey;
+  return { key: masterKey, credentialId: response.id };
 }
 
-export async function signIn(username: string): Promise<CryptoKey> {
+export async function signIn(username: string): Promise<Session> {
   const options = await api.post<any>('/api/auth/signin/challenge', { username });
   options.extensions = { ...options.extensions, ...prfInput };
   const response = await startAuthentication({ optionsJSON: options });
   const secret = takePrf(response);
   if (!secret) throw new Error('This authenticator does not support the WebAuthn PRF extension');
-  const { wrappedKey } = await api.post<{ wrappedKey: string }>('/api/auth/signin/verify', { response });
-  return unwrapMasterKey(secret, wrappedKey);
+  const { wrappedKey, credentialId } = await api.post<{ wrappedKey: string; credentialId: string }>(
+    '/api/auth/signin/verify',
+    { response },
+  );
+  return { key: await unwrapMasterKey(secret, wrappedKey), credentialId };
+}
+
+export interface Session { key: CryptoKey; credentialId: string }
+
+export async function addAuthenticator(masterKey: CryptoKey, name: string): Promise<void> {
+  const options = await api.post<any>('/api/auth/add-credential/start');
+  options.extensions = { ...options.extensions, ...prfInput };
+  const response = await startRegistration({ optionsJSON: options });
+  const prf = response.clientExtensionResults?.prf as any;
+  let secret: ArrayBuffer | undefined = prf?.results?.first;
+  if (prf) delete prf.results;
+  secret ??= await getPrfOutput(response.id);
+  const wrappedKey = await wrapMasterKey(secret, masterKey);
+  const nameEncrypted = name.trim() ? await encryptNote(masterKey, name.trim()) : null;
+  await api.post('/api/auth/add-credential/finish', { response, wrappedKey, nameEncrypted });
 }

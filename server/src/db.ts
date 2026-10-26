@@ -51,5 +51,10 @@ export function openDb(dataDir: string): Db {
       expires INTEGER NOT NULL
     );
   `);
+  const credCols = db.prepare('PRAGMA table_info(credentials)').all() as { name: string }[];
+  if (!credCols.some((c) => c.name === 'name_encrypted')) {
+    // client-side (master key) encrypted authenticator display name
+    db.exec('ALTER TABLE credentials ADD COLUMN name_encrypted TEXT');
+  }
   return db;
 }

@@ -4,6 +4,7 @@ import {
   Field, Input, Select, Spinner, Subtitle1, Text, Title3, tokens,
 } from '@fluentui/react-components';
 import { api, type NoteSummary } from './api';
+import Authenticators from './Authenticators';
 import { decryptNote, encryptNote } from './crypto';
 import { DEFAULT_CATEGORY, deriveTitle, parseNote, serializeNote, type NoteMeta } from './markdown';
 
@@ -12,8 +13,8 @@ const PAGE = 50;
 
 interface Open { id: string; meta: NoteMeta; body: string }
 
-export default function NotesApp({ username, masterKey, onSignOut }: {
-  username: string; masterKey: CryptoKey; onSignOut: () => void;
+export default function NotesApp({ username, credentialId, masterKey, onSignOut }: {
+  username: string; credentialId: string; masterKey: CryptoKey; onSignOut: () => void;
 }) {
   const [notes, setNotes] = useState<NoteSummary[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -22,6 +23,7 @@ export default function NotesApp({ username, masterKey, onSignOut }: {
   const [newCat, setNewCat] = useState<string | null>(null);
   const [extraCats, setExtraCats] = useState<string[]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
   const timer = useRef<number | undefined>(undefined);
 
   const load = useCallback(async (offset: number) => {
@@ -87,6 +89,7 @@ export default function NotesApp({ username, masterKey, onSignOut }: {
       <header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 16px', borderBottom: `1px solid ${tokens.colorNeutralStroke2}` }}>
         <Title3 style={{ flex: 1 }}>Sec SelfNotes</Title3>
         <Text>{username}</Text>
+        <Button onClick={() => setShowAuth(true)}>Authenticators</Button>
         <Button onClick={onSignOut}>Sign out</Button>
       </header>
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
@@ -143,6 +146,8 @@ export default function NotesApp({ username, masterKey, onSignOut }: {
           )}
         </main>
       </div>
+
+      <Authenticators masterKey={masterKey} credentialId={credentialId} open={showAuth} onClose={() => setShowAuth(false)} />
 
       <Dialog open={newCat !== null} onOpenChange={(_, d) => !d.open && setNewCat(null)}>
         <DialogSurface>

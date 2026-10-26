@@ -33,6 +33,14 @@ export async function createWrappedMasterKey(prfOutput: ArrayBuffer): Promise<{ 
   return { masterKey: await importMaster(raw), wrapped };
 }
 
+/** Wraps an existing master key for an additional authenticator's PRF output. */
+export async function wrapMasterKey(prfOutput: ArrayBuffer, masterKey: CryptoKey): Promise<string> {
+  const raw = await crypto.subtle.exportKey('raw', masterKey);
+  const iv = crypto.getRandomValues(new Uint8Array(IV_LEN));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await wrappingKey(prfOutput), raw);
+  return b64(concat(iv, new Uint8Array(ct)));
+}
+
 export async function unwrapMasterKey(prfOutput: ArrayBuffer, wrapped: string): Promise<CryptoKey> {
   const data = unb64(wrapped);
   const raw = await crypto.subtle.decrypt(
@@ -44,7 +52,7 @@ export async function unwrapMasterKey(prfOutput: ArrayBuffer, wrapped: string): 
 }
 
 const importMaster = (raw: Uint8Array<ArrayBuffer>) =>
-  crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+  crypto.subtle.importKey('raw', raw, 'AES-GCM', true, ['encrypt', 'decrypt']);
 
 function concat(...parts: Uint8Array[]): Uint8Array<ArrayBuffer> {
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));

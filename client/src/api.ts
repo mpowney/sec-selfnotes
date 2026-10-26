@@ -33,6 +33,13 @@ export interface AdminCredential {
   createdAt: number;
 }
 
+export interface CredentialInfo {
+  credentialId: string;
+  transports: string[];
+  createdAt: number;
+  nameEncrypted: string | null;
+}
+
 export const adminApi = {
   status: () => req<{ authenticated: boolean; username?: string }>('GET', '/api/admin/status'),
   login: (username: string, password: string) =>
@@ -56,4 +63,9 @@ export const api = {
     req<NoteSummary>('PUT', `/api/notes/${id}`, { title, category, content }),
   deleteNote: (id: string) => req<{ ok: boolean }>('DELETE', `/api/notes/${id}`),
   logout: () => req<{ ok: boolean }>('POST', '/api/auth/logout', {}),
+  authStatus: () => req<{ authenticated: boolean; username?: string; credentialId?: string }>('GET', '/api/auth/status'),
+  listCredentials: () => req<{ credentials: CredentialInfo[] }>('GET', '/api/auth/credentials'),
+  revokeCredential: (id: string) => req<{ success: boolean }>('DELETE', `/api/auth/credentials/${encodeURIComponent(id)}`),
+  nameCredential: (id: string, nameEncrypted: string | null) =>
+    req<{ success: boolean }>('PATCH', `/api/auth/credentials/${encodeURIComponent(id)}/name`, { nameEncrypted }),
 };
