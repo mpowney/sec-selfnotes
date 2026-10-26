@@ -51,4 +51,184 @@ docker compose up -d --build
 # multi-platform image: docker buildx build --platform linux/arm64,linux/amd64 .
 ```
 
-Caddy terminates TLS (see `Caddyfile`); data persists in `./data`.
+TLS is terminated by a separate Caddy instance (not part of this repo's compose file); the app listens on plain HTTP port 4000 and data persists in `./data`. See [Caddy reverse proxy](#caddy-reverse-proxy).
+
+### Caddy reverse proxy
+
+Configure your existing Caddy to proxy your domain to the app (TLS is assumed to be handled there already):
+
+```
+notes.example.com {
+	reverse_proxy <docker-host-ip-or-hostname>:4000
+}
+```
+
+Set `RP_ID=notes.example.com` and `RP_ORIGIN=https://notes.example.com` in `.env`; `RP_ORIGIN` must exactly match the URL used in the browser. If Caddy runs in Docker on the same host, either attach it to the same network and use `selfnotes:4000`, or use the host's IP and the published port 4000. Restrict port 4000 to the Caddy host (e.g. firewall) so it isn't reachable directly.
+
+## Raspberry Pi Docker Deployment
+
+### Prerequisites
+
+- Raspberry Pi 3/4/5 (4 GB+ RAM recommended for building; 1 GB can run the built image) with Raspberry Pi OS (Bookworm or newer, 64-bit recommended; 32-bit also works, see below)
+- Docker Engine 24+ and the Docker Compose v2 plugin
+- A domain name pointing at the Pi (required for WebAuthn/YubiKey) served over HTTPS by your separate Caddy, which must be able to reach port 4000 on the Pi
+- Internet access and ~3 GB free disk space for the build
+
+### Install Docker and Docker Compose
+
+```sh
+# update the OS
+sudo apt update && sudo apt full-upgrade -y
+
+# install Docker Engine and the Compose plugin using the official convenience script
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+rm get-docker.sh
+
+# allow your user to run docker without sudo (log out and back in afterwards)
+sudo usermod -aG docker $USER
+
+# verify
+docker --version
+docker compose version
+uname -m   # aarch64 = 64-bit, armv7l = 32-bit
+```
+
+### Quick Start
+
+```sh
+# 1. clone the repository and check out the branch
+git clone https://github.com/mpowney/sec-selfnotes.git
+cd sec-selfnotes
+git checkout copilot/develop-encrypted-note-app
+
+# 2. create the environment file
+cp .env.example .env
+
+# 3. generate secrets and append them (or edit .env by hand)
+echo "SYSTEM_ENCRYPTION_KEY=$(openssl rand -hex 32)"
+echo "SESSION_SECRET=$(openssl rand -base64 48)"
+nano .env
+#   SYSTEM_ENCRYPTION_KEY=<64 hex chars>   (back this up; losing it makes notes unreadable)
+#   SESSION_SECRET=<random string>
+#   RP_ID=notes.example.com                (your domain, no scheme)
+#   RP_ORIGIN=https://notes.example.com    (must match the browser URL exactly)
+
+# 4. build the image (native build on a 64-bit Pi produces linux/arm64)
+docker compose build
+
+# 5. start in the background
+docker compose up -d
+
+# 6. check status, then open https://<your-domain> (served via your separate Caddy)
+docker compose ps
+docker compose logs -f selfnotes
+```
+
+Notes: the app is published on port 4000; point your separate Caddy at it (see [Caddy reverse proxy](#caddy-reverse-proxy)). Data is persisted in `./data`.
+
+### Manual Docker Build and Run (without Compose)
+
+```sh
+# build for ARM64 (use --platform linux/arm/v7 on 32-bit OS)
+docker build -t sec-selfnotes .
+
+# run; persists data in ./data (the container runs as uid 1000 "node")
+mkdir -p data && sudo chown 1000:1000 data
+docker run -d --name selfnotes --restart unless-stopped \
+  --env-file .env \
+  -e NODE_ENV=production -e DATA_DIR=/data -e PORT=4000 \
+  -p 4000:4000 \
+  -v "$(pwd)/data:/data" \
+  sec-selfnotes
+```
+
+The app is served over plain HTTP on port 4000. WebAuthn only works on `localhost` or HTTPS, so put your Caddy (or other TLS proxy) in front.
+
+### Raspberry Pi Specific Configuration
+
+**32-bit ARM (armv7).** The Dockerfile uses `node:22-bookworm-slim`, which publishes `linux/arm/v7` images, so `docker compose build` works natively on a 32-bit OS. Native modules (e.g. SQLite) compile during the build, which is slow; builds can instead be done on another machine:
+
+```sh
+docker buildx create --use
+docker buildx build --platform linux/arm64,linux/arm/v7 -t sec-selfnotes --load .   # --load supports a single platform; use --push with a registry for multi-platform
+```
+
+**TLS/HTTPS.** TLS is handled by your separate Caddy instance; see [Caddy reverse proxy](#caddy-reverse-proxy). Ensure its site block proxies to this Pi on port 4000 and that `RP_ORIGIN` is `https://<domain>`.
+
+### Troubleshooting
+
+**Container fails to start**
+```sh
+docker compose logs selfnotes
+```
+Compose refuses to start if `SYSTEM_ENCRYPTION_KEY`, `SESSION_SECRET`, `RP_ID` or `RP_ORIGIN` are unset. The key must be 64 hex characters (`openssl rand -hex 32`).
+
+**Out of memory on older Pi models (1 GB RAM)**
+```sh
+free -h
+# add temporary swap for the build
+sudo dphys-swapfile swapoff
+sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=2048/' /etc/dphys-swapfile
+sudo dphys-swapfile setup && sudo dphys-swapfile swapon
+```
+Alternatively build the image on another machine (see above) and pull it on the Pi.
+
+**SQLite database locking / permission errors**
+- Keep `./data` on local storage (SD card/SSD), not NFS/SMB, which break SQLite locking.
+- Run only one instance against a given data directory.
+- Fix ownership: `sudo chown -R 1000:1000 data`
+- Stop the container before copying or backing up the database files: `docker compose stop selfnotes`
+
+**Network and connectivity**
+```sh
+docker compose ps                      # selfnotes should be "running"
+curl -I http://localhost:4000          # test locally on the Pi
+sudo ss -tlnp | grep ':4000'           # check the port is bound
+```
+Check that Caddy can reach port 4000 on the Pi, DNS (`dig +short notes.example.com`) and any firewall (`sudo ufw status`).
+
+**WebAuthn / YubiKey problems**
+- `RP_ID` must be the bare domain and `RP_ORIGIN` must exactly match the URL in the browser (scheme, host, port).
+- WebAuthn requires HTTPS (or `localhost`); verify the certificate is valid.
+- Changing `RP_ID` invalidates previously registered keys.
+
+**Node.js memory issues**
+```sh
+# cap the V8 heap by adding to the selfnotes service in docker-compose.yml
+#   environment:
+#     NODE_OPTIONS: --max-old-space-size=256
+docker stats --no-stream
+```
+If `npm ci` is killed during the build, add swap as above.
+
+### Performance Optimization
+
+- Use an SSD (USB 3) instead of an SD card for `./data` and Docker's storage.
+- Limit resources in `docker-compose.yml` (e.g. `mem_limit: 512m` on `selfnotes`) so the OS keeps headroom.
+- Set `NODE_OPTIONS=--max-old-space-size=<MB>` to roughly 50-60% of the memory available to the container.
+- Run the Pi headless (`sudo raspi-config` → boot to console) to free RAM.
+- Reclaim disk space regularly: `docker image prune -f`.
+
+### Monitoring
+
+```sh
+docker compose ps                         # container state
+docker compose logs -f --tail=100         # live logs
+docker stats                              # CPU / memory per container
+docker inspect --format '{{.State.Status}} restarts={{.RestartCount}}' $(docker compose ps -q selfnotes)
+vcgencmd measure_temp                     # SoC temperature
+free -h && df -h                          # memory and disk
+vcgencmd get_throttled                    # 0x0 = no under-voltage/throttling
+```
+
+### Updating
+
+```sh
+cd sec-selfnotes
+cp -a data data.bak-$(date +%F)           # back up first
+git pull origin copilot/develop-encrypted-note-app
+docker compose build --pull
+docker compose up -d
+docker image prune -f
+```

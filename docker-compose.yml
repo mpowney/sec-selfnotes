@@ -12,19 +12,5 @@ services:
       DATA_DIR: /data
     volumes:
       - ./data:/data
-    expose:
-      - "4000"
-
-  caddy:
-    image: caddy:2
-    restart: unless-stopped
-    depends_on: [selfnotes]
     ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-
-volumes:
-  caddy_data:
+      - "4000:4000"
