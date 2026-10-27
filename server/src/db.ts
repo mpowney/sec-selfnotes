@@ -45,6 +45,13 @@ export function openDb(dataDir: string): Db {
       user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       last_login_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS sync_state (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      key TEXT NOT NULL,
+      content TEXT NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, key)
+    );
     CREATE TABLE IF NOT EXISTS sessions (
       sid TEXT PRIMARY KEY,
       data TEXT NOT NULL,

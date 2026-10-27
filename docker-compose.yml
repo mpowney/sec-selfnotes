@@ -15,3 +15,16 @@ services:
       - ./data:/data
     ports:
       - "${PORT:-4000}:${PORT:-4000}"
+
+  # Optional sync service (OneNote / folder import, export). Separate image; serve at <host>/sync via Caddy.
+  sync:
+    build: ./sync
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: ${SYNC_PORT:-4100}
+      BASE_PATH: /sync
+      MS_CLIENT_ID: ${MS_CLIENT_ID:-}
+      MS_TENANT: ${MS_TENANT:-common}
+    ports:
+      - "${SYNC_PORT:-4100}:${SYNC_PORT:-4100}"

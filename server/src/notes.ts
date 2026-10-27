@@ -59,18 +59,22 @@ export function notesRouter(db: Db, storage: NoteStorage): Router {
     const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '50'), 10) || 50, 1), 200);
     const offset = Math.max(parseInt(String(req.query.offset ?? '0'), 10) || 0, 0);
     const category = typeof req.query.category === 'string' ? req.query.category : undefined;
-    const rows = (
-      category
-        ? db
-            .prepare(
-              'SELECT * FROM notes WHERE user_id = ? AND category = ? ORDER BY modified_at DESC LIMIT ? OFFSET ?',
-            )
-            .all(req.session.userId, category, limit, offset)
-        : db
-            .prepare('SELECT * FROM notes WHERE user_id = ? ORDER BY modified_at DESC LIMIT ? OFFSET ?')
-            .all(req.session.userId, limit, offset)
-    ) as NoteRow[];
-    res.json({ notes: rows.map(toMeta), limit, offset });
+    // Incremental listing for sync clients: only notes modified after this epoch-ms timestamp.
+    const since = Math.max(parseInt(String(req.query.modifiedSince ?? '0'), 10) || 0, 0);
+    const where = ['user_id = ?', 'modified_at > ?'];
+    const args: (string | number)[] = [req.session.userId!, since];
+    if (category) {
+      where.push('category = ?');
+      args.push(category);
+    }
+    const clause = where.join(' AND ');
+    const rows = db
+      .prepare(`SELECT * FROM notes WHERE ${clause} ORDER BY modified_at DESC, note_id LIMIT ? OFFSET ?`)
+      .all(...args, limit, offset) as NoteRow[];
+    const { total } = db.prepare(`SELECT COUNT(*) AS total FROM notes WHERE ${clause}`).get(...args) as {
+      total: number;
+    };
+    res.json({ notes: rows.map(toMeta), limit, offset, total });
   });
 
   r.get('/notes/:noteId/metadata', (req, res) => {
@@ -97,10 +101,14 @@ export function notesRouter(db: Db, storage: NoteStorage): Router {
     if (!content) return res.status(400).json({ error: 'content must be base64 SCE1 data' });
     const noteId = randomUUID();
     const now = Date.now();
+    // Importers may preserve original timestamps (epoch ms, not in the future).
+    const ts = (v: unknown) => (Number.isInteger(v) && (v as number) > 0 && (v as number) <= now ? (v as number) : now);
+    const createdAt = ts(req.body?.createdAt);
+    const modifiedAt = Math.max(createdAt, ts(req.body?.modifiedAt));
     storage.write(meta.category, noteId, content);
     db.prepare(
       'INSERT INTO notes (note_id, user_id, title, category, created_at, modified_at) VALUES (?, ?, ?, ?, ?, ?)',
-    ).run(noteId, req.session.userId, meta.title, meta.category, now, now);
+    ).run(noteId, req.session.userId, meta.title, meta.category, createdAt, modifiedAt);
     res.status(201).json(toMeta(find(req.session.userId!, noteId)!));
   });
 
@@ -169,6 +177,29 @@ export function notesRouter(db: Db, storage: NoteStorage): Router {
     } catch {
       res.status(404).json({ error: 'File not found' });
     }
+  });
+
+  // Opaque, client-encrypted (SCE1) sync bookkeeping (e.g. source-id -> note-id maps) used by the sync service UI.
+  const STATE_KEY_RE = /^[a-z0-9-]{1,64}$/;
+  r.get('/sync-state/:key', (req, res) => {
+    if (!STATE_KEY_RE.test(req.params.key)) return res.status(400).json({ error: 'Invalid key' });
+    const row = db
+      .prepare('SELECT content, updated_at FROM sync_state WHERE user_id = ? AND key = ?')
+      .get(req.session.userId, req.params.key) as { content: string; updated_at: number } | undefined;
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    res.json({ content: row.content, updatedAt: row.updated_at });
+  });
+
+  r.put('/sync-state/:key', (req, res) => {
+    if (!STATE_KEY_RE.test(req.params.key)) return res.status(400).json({ error: 'Invalid key' });
+    const content = parseContent(req.body);
+    if (!content) return res.status(400).json({ error: 'content must be base64 SCE1 data' });
+    if (content.length > 8 * 1024 * 1024) return res.status(413).json({ error: 'State too large' });
+    db.prepare(
+      `INSERT INTO sync_state (user_id, key, content, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(user_id, key) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at`,
+    ).run(req.session.userId, req.params.key, content.toString('base64'), Date.now());
+    res.json({ ok: true });
   });
 
   r.delete('/notes/:noteId', (req, res) => {

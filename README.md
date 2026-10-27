@@ -40,6 +40,10 @@ SQLite stores only users, credentials/wrapped keys and note metadata (id, title,
 - **Authenticators** (header button): register additional authenticators (the master key is wrapped for each, with an optional name encrypted by the master key so only you can read it) and revoke your own authenticators other than the one in the current session or the last one.
 - Admin API: `GET /api/admin/status`, `POST /login`, `/logout`, `GET /users`, `DELETE /users/:id`, `GET /users/:id/credentials`, `DELETE /users/:id/credentials/:credentialId`.
 
+## Sync service (optional)
+
+Import/continuous sync (OneNote on OneDrive, iCloud Notes via folder export) and full export live in a separate container, `sync/`, so the core stays untouched. See [`sync/README.md`](sync/README.md), including the Caddy snippet to serve it at `https://<your-host>/sync`. The core API gained `modifiedSince`/`total` on `GET /api/notes`, optional `createdAt`/`modifiedAt` on `POST /api/notes`, and `GET|PUT /api/sync-state/:key`.
+
 ## Configuration
 
 See `.env.example`: `SYSTEM_ENCRYPTION_KEY` (64 hex chars), `SESSION_SECRET`, `PORT` (4000), `WEBAUTHN_ID`, `WEBAUTHN_ORIGIN`, `WEBAUTHN_NAME`, `DATA_DIR` (`./data`), `NODE_ENV`.

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sec SelfNotes – Sync</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header><h1>Sec SelfNotes · Sync</h1><a href="/">← Back to notes</a></header>
+<main>
+  <p class="hint">All encryption happens in this browser tab. Keep it open and unlocked while syncing; the key is memory-only.</p>
+
+  <section id="unlock">
+    <h2>1. Unlock</h2>
+    <input id="username" placeholder="Username" autocomplete="username webauthn">
+    <button id="signin">Unlock with security key</button>
+    <span id="who"></span>
+  </section>
+
+  <section id="onenote" class="needs-key">
+    <h2>OneNote (OneDrive) → import &amp; continuous sync</h2>
+    <p class="hint" id="msStatus"></p>
+    <button id="msLogin">Sign in to Microsoft</button>
+    <button id="msImport" disabled>Import / sync now</button>
+    <label><input type="checkbox" id="msAuto"> Re-sync every <input id="msEvery" type="number" min="1" value="15" style="width:4em"> min</label>
+  </section>
+
+  <section id="folder" class="needs-key">
+    <h2>Folder (iCloud Notes export, Markdown, HTML, text) → import &amp; watch</h2>
+    <p class="hint">Use <code>tools/icloud-export.js</code> on a Mac to export iCloud Notes to a folder, then pick it here.</p>
+    <button id="pickDir">Choose folder (watchable)</button>
+    <label>or one-off: <input id="pickFiles" type="file" webkitdirectory multiple></label>
+    <label><input type="checkbox" id="dirAuto"> Re-scan every <input id="dirEvery" type="number" min="1" value="5" style="width:4em"> min</label>
+  </section>
+
+  <section id="export" class="needs-key">
+    <h2>Export all notes (Markdown + attachments)</h2>
+    <button id="exportDir">Export to folder</button>
+    <button id="exportZip">Export as .zip (max 4 GiB per file)</button>
+  </section>
+
+  <section><h2>Log</h2><progress id="bar" max="1" value="0"></progress><pre id="log"></pre></section>
+</main>
+<script src="vendor/index.umd.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
