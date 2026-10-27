@@ -42,7 +42,7 @@ SQLite stores only users, credentials/wrapped keys and note metadata (id, title,
 
 ## Configuration
 
-See `.env.example`: `SYSTEM_ENCRYPTION_KEY` (64 hex chars), `SESSION_SECRET`, `PORT` (4000), `RP_ID`, `RP_ORIGIN`, `RP_NAME`, `DATA_DIR` (`./data`), `NODE_ENV`.
+See `.env.example`: `SYSTEM_ENCRYPTION_KEY` (64 hex chars), `SESSION_SECRET`, `PORT` (4000), `WEBAUTHN_ID`, `WEBAUTHN_ORIGIN`, `WEBAUTHN_NAME`, `DATA_DIR` (`./data`), `NODE_ENV`.
 
 ## Development
 
@@ -51,12 +51,12 @@ cd server && npm ci && npm test && SYSTEM_ENCRYPTION_KEY=$(openssl rand -hex 32)
 cd client && npm ci && npm run dev   # http://localhost:5173 (proxies /api to :4000)
 ```
 
-For WebAuthn on the Vite dev server set `RP_ORIGIN=http://localhost:5173`.
+For WebAuthn on the Vite dev server set `WEBAUTHN_ORIGIN=http://localhost:5173`.
 
 ## Deployment
 
 ```sh
-cp .env.example .env   # fill in values, set RP_ID/RP_ORIGIN to your domain
+cp .env.example .env   # fill in values, set WEBAUTHN_ID/WEBAUTHN_ORIGIN to your domain
 docker compose up -d --build
 # multi-platform image: docker buildx build --platform linux/arm64,linux/amd64 .
 ```
@@ -73,7 +73,7 @@ notes.example.com {
 }
 ```
 
-Set `RP_ID=notes.example.com` and `RP_ORIGIN=https://notes.example.com` in `.env`; `RP_ORIGIN` must exactly match the URL used in the browser. If Caddy runs in Docker on the same host, either attach it to the same network and use `selfnotes:4000`, or use the host's IP and the published port 4000. Restrict port 4000 to the Caddy host (e.g. firewall) so it isn't reachable directly.
+Set `WEBAUTHN_ID=notes.example.com` and `WEBAUTHN_ORIGIN=https://notes.example.com` in `.env`; `WEBAUTHN_ORIGIN` must exactly match the URL used in the browser. If Caddy runs in Docker on the same host, either attach it to the same network and use `selfnotes:4000`, or use the host's IP and the published port 4000. Restrict port 4000 to the Caddy host (e.g. firewall) so it isn't reachable directly.
 
 ## Raspberry Pi Docker Deployment
 
@@ -121,8 +121,8 @@ echo "SESSION_SECRET=$(openssl rand -base64 48)"
 nano .env
 #   SYSTEM_ENCRYPTION_KEY=<64 hex chars>   (back this up; losing it makes notes unreadable)
 #   SESSION_SECRET=<random string>
-#   RP_ID=notes.example.com                (your domain, no scheme)
-#   RP_ORIGIN=https://notes.example.com    (must match the browser URL exactly)
+#   WEBAUTHN_ID=notes.example.com                (your domain, no scheme)
+#   WEBAUTHN_ORIGIN=https://notes.example.com    (must match the browser URL exactly)
 
 # 4. build the image (native build on a 64-bit Pi produces linux/arm64)
 docker compose build
@@ -164,7 +164,7 @@ docker buildx create --use
 docker buildx build --platform linux/arm64,linux/arm/v7 -t sec-selfnotes --load .   # --load supports a single platform; use --push with a registry for multi-platform
 ```
 
-**TLS/HTTPS.** TLS is handled by your separate Caddy instance; see [Caddy reverse proxy](#caddy-reverse-proxy). Ensure its site block proxies to this Pi on port 4000 and that `RP_ORIGIN` is `https://<domain>`.
+**TLS/HTTPS.** TLS is handled by your separate Caddy instance; see [Caddy reverse proxy](#caddy-reverse-proxy). Ensure its site block proxies to this Pi on port 4000 and that `WEBAUTHN_ORIGIN` is `https://<domain>`.
 
 ### Troubleshooting
 
@@ -172,7 +172,7 @@ docker buildx build --platform linux/arm64,linux/arm/v7 -t sec-selfnotes --load 
 ```sh
 docker compose logs selfnotes
 ```
-Compose refuses to start if `SYSTEM_ENCRYPTION_KEY`, `SESSION_SECRET`, `RP_ID` or `RP_ORIGIN` are unset. The key must be 64 hex characters (`openssl rand -hex 32`).
+Compose refuses to start if `SYSTEM_ENCRYPTION_KEY`, `SESSION_SECRET`, `WEBAUTHN_ID` or `WEBAUTHN_ORIGIN` are unset. The key must be 64 hex characters (`openssl rand -hex 32`).
 
 **Out of memory on older Pi models (1 GB RAM)**
 ```sh
@@ -199,9 +199,9 @@ sudo ss -tlnp | grep ':4000'           # check the port is bound
 Check that Caddy can reach port 4000 on the Pi, DNS (`dig +short notes.example.com`) and any firewall (`sudo ufw status`).
 
 **WebAuthn / YubiKey problems**
-- `RP_ID` must be the bare domain and `RP_ORIGIN` must exactly match the URL in the browser (scheme, host, port).
+- `WEBAUTHN_ID` must be the bare domain and `WEBAUTHN_ORIGIN` must exactly match the URL in the browser (scheme, host, port).
 - WebAuthn requires HTTPS (or `localhost`); verify the certificate is valid.
-- Changing `RP_ID` invalidates previously registered keys.
+- Changing `WEBAUTHN_ID` invalidates previously registered keys.
 
 **Node.js memory issues**
 ```sh

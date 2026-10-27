@@ -14,15 +14,15 @@ export function loadConfig() {
     throw new Error('SYSTEM_ENCRYPTION_KEY must be a 32-byte hex-encoded key (64 hex chars)');
   }
   const port = Number(process.env.PORT ?? 4000);
-  const rpID = process.env.RP_ID ?? 'localhost';
+  const rpID = process.env.WEBAUTHN_ID ?? 'localhost';
   return {
     isProd,
     port,
     systemKey: Buffer.from(keyHex, 'hex'),
     sessionSecret: required('SESSION_SECRET'),
     rpID,
-    rpOrigin: process.env.RP_ORIGIN ?? `http://${rpID}:${port}`,
-    rpName: process.env.RP_NAME ?? 'Sec SelfNotes',
+    rpOrigin: process.env.WEBAUTHN_ORIGIN ?? `http://${rpID}:${port}`,
+    rpName: process.env.WEBAUTHN_NAME ?? 'Sec SelfNotes',
     dataDir: path.resolve(process.env.DATA_DIR ?? './data'),
     clientDir: path.resolve(process.env.CLIENT_DIR ?? '../client/dist'),
   };
