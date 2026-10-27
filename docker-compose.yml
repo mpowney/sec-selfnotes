@@ -9,8 +9,9 @@ services:
       WEBAUTHN_ID: ${WEBAUTHN_ID:?e.g. notes.example.com}
       WEBAUTHN_ORIGIN: ${WEBAUTHN_ORIGIN:?e.g. https://notes.example.com}
       WEBAUTHN_NAME: ${WEBAUTHN_NAME:-Sec SelfNotes}
+      PORT: ${PORT:-4000}
       DATA_DIR: /data
     volumes:
       - ./data:/data
     ports:
-      - "4000:4000"
+      - "${PORT:-4000}:${PORT:-4000}"
