@@ -12,6 +12,9 @@ services:
       PORT: ${PORT:-4000}
       DATA_DIR: /data
     volumes:
-      - ./data:/data
+      - selfnotes-data:/data
     ports:
       - "${PORT:-4000}:${PORT:-4000}"
+
+volumes:
+  selfnotes-data:
