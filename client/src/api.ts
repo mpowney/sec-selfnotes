@@ -61,6 +61,19 @@ export const api = {
     req<NoteSummary>('POST', '/api/notes', { title, category, content }),
   updateNote: (id: string, title: string, category: string, content: string) =>
     req<NoteSummary>('PUT', `/api/notes/${id}`, { title, category, content }),
+  startUpload: (noteId: string) => req<{ fileId: string }>('POST', `/api/notes/${noteId}/files`, {}),
+  uploadChunk: async (noteId: string, fileId: string, index: number, data: Uint8Array<ArrayBuffer>) => {
+    const res = await fetch(`/api/notes/${noteId}/files/${fileId}/chunks/${index}`, {
+      method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/octet-stream' }, body: data,
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `Upload failed (${res.status})`);
+  },
+  fileInfo: (noteId: string, fileId: string) => req<{ chunks: number }>('GET', `/api/notes/${noteId}/files/${fileId}`),
+  downloadChunk: async (noteId: string, fileId: string, index: number) => {
+    const res = await fetch(`/api/notes/${noteId}/files/${fileId}/chunks/${index}`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error(`Download failed (${res.status})`);
+    return new Uint8Array(await res.arrayBuffer());
+  },
   deleteNote: (id: string) => req<{ ok: boolean }>('DELETE', `/api/notes/${id}`),
   logout: () => req<{ ok: boolean }>('POST', '/api/auth/logout', {}),
   authStatus: () => req<{ authenticated: boolean; username?: string; credentialId?: string }>('GET', '/api/auth/status'),

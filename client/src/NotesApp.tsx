@@ -137,7 +137,7 @@ export default function NotesApp({ username, credentialId, masterKey, onSignOut 
               </div>
               <div style={{ flex: 1, minHeight: 0 }} data-color-mode="light">
                 <Suspense fallback={<Spinner />}>
-                  <Editor value={open.body} onChange={(body) => change({ ...open, body })} />
+                  <Editor key={open.id} noteId={open.id} masterKey={masterKey} value={open.body} onChange={(body) => change({ ...open, body })} />
                 </Suspense>
               </div>
             </>
