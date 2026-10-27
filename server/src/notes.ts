@@ -1,8 +1,8 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import type { Db } from './db.js';
 import { isSce1 } from './crypto.js';
-import { DEFAULT_CATEGORY, NoteStorage, UUID_RE } from './storage.js';
+import { CHUNK_BYTES, DEFAULT_CATEGORY, MAX_CHUNKS, NoteStorage, UUID_RE } from './storage.js';
 
 interface NoteRow {
   note_id: string;
@@ -125,18 +125,47 @@ export function notesRouter(db: Db, storage: NoteStorage): Router {
   r.post('/notes/:noteId/files', (req, res) => {
     const note = find(req.session.userId!, req.params.noteId);
     if (!note) return res.status(404).json({ error: 'Note not found' });
-    const content = parseContent(req.body);
-    if (!content) return res.status(400).json({ error: 'content must be base64 SCE1 data' });
     const fileId = randomUUID();
-    storage.writeUpload(note.category, note.note_id, fileId, content);
+    storage.initUpload(note.category, note.note_id, fileId);
     res.status(201).json({ fileId });
   });
+
+  r.put(
+    '/notes/:noteId/files/:fileId/chunks/:index',
+    express.raw({ type: 'application/octet-stream', limit: CHUNK_BYTES + 1024 }),
+    (req, res) => {
+      const note = find(req.session.userId!, req.params.noteId);
+      if (!note || !UUID_RE.test(req.params.fileId)) return res.status(404).json({ error: 'File not found' });
+      const index = Number(req.params.index);
+      const body = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+      if (!Number.isInteger(index) || index < 0 || index >= MAX_CHUNKS) return res.status(400).json({ error: 'Invalid chunk' });
+      if (!isSce1(body)) return res.status(400).json({ error: 'chunk must be SCE1 data' });
+      try {
+        storage.writeChunk(note.category, note.note_id, req.params.fileId, index, body);
+        res.json({ ok: true });
+      } catch {
+        res.status(404).json({ error: 'File not found' });
+      }
+    },
+  );
 
   r.get('/notes/:noteId/files/:fileId', (req, res) => {
     const note = find(req.session.userId!, req.params.noteId);
     if (!note || !UUID_RE.test(req.params.fileId)) return res.status(404).json({ error: 'File not found' });
     try {
-      res.json({ content: storage.readUpload(note.category, note.note_id, req.params.fileId).toString('base64') });
+      res.json({ chunks: storage.chunkCount(note.category, note.note_id, req.params.fileId) });
+    } catch {
+      res.status(404).json({ error: 'File not found' });
+    }
+  });
+
+  r.get('/notes/:noteId/files/:fileId/chunks/:index', (req, res) => {
+    const note = find(req.session.userId!, req.params.noteId);
+    if (!note || !UUID_RE.test(req.params.fileId)) return res.status(404).json({ error: 'File not found' });
+    try {
+      res.type('application/octet-stream').send(
+        storage.readChunk(note.category, note.note_id, req.params.fileId, Number(req.params.index)),
+      );
     } catch {
       res.status(404).json({ error: 'File not found' });
     }

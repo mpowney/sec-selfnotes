@@ -1,10 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MDEditor, { commands, type ICommand } from '@uiw/react-md-editor';
 import { api } from './api';
-import { decryptBytes, encryptBytes } from './crypto';
+import { decryptRaw, encryptRaw } from './crypto';
 
 const SCHEME = 'sec-file:';
-const MAX_BYTES = 20 * 1024 * 1024;
+const CHUNK = 16 * 1024 * 1024;
+const MAX_BYTES = 20 * 1024 * 1024 * 1024;
+const aadFor = (fileId: string, index: number, total: number) => `${fileId}:${index}:${total}`;
+
+/** Streams the encrypted chunks of an uploaded file, yielding decrypted plaintext in order. */
+async function* readFile(noteId: string, masterKey: CryptoKey, fileId: string) {
+  const { chunks } = await api.fileInfo(noteId, fileId);
+  if (!chunks) throw new Error('Empty file');
+  for (let i = 0; i < chunks; i++) {
+    yield await decryptRaw(masterKey, await api.downloadChunk(noteId, fileId, i), aadFor(fileId, i, chunks));
+  }
+}
 const IMAGE_TYPES: Record<string, string> = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
   webp: 'image/webp', avif: 'image/avif', bmp: 'image/bmp',
@@ -23,10 +34,13 @@ function useDecrypted(noteId: string, masterKey: CryptoKey, fileId: string, type
   useEffect(() => {
     let revoked = false;
     let objectUrl: string | undefined;
-    api.getFile(noteId, fileId)
-      .then(async (f) => {
-        const bytes = await decryptBytes(masterKey, f.content);
-        objectUrl = URL.createObjectURL(new Blob([bytes], { type }));
+    (async () => {
+      const parts: Uint8Array<ArrayBuffer>[] = [];
+      for await (const part of readFile(noteId, masterKey, fileId)) parts.push(part);
+      return parts;
+    })()
+      .then((parts) => {
+        objectUrl = URL.createObjectURL(new Blob(parts, { type }));
         if (revoked) URL.revokeObjectURL(objectUrl);
         else setUrl(objectUrl);
       })
@@ -34,6 +48,39 @@ function useDecrypted(noteId: string, masterKey: CryptoKey, fileId: string, type
     return () => { revoked = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [noteId, masterKey, fileId, type]);
   return { url, failed };
+}
+
+/** Maps a viewport point to a character offset in the textarea by hit-testing an invisible mirror of it. */
+function offsetAtPoint(ta: HTMLTextAreaElement | null, x: number, y: number): number | null {
+  if (!ta) return null;
+  const r = ta.getBoundingClientRect();
+  if (x < r.left || x > r.right || y < r.top || y > r.bottom) return ta.selectionStart;
+  const mirror = document.createElement('div');
+  const cs = getComputedStyle(ta);
+  for (const p of ['font', 'letterSpacing', 'lineHeight', 'padding', 'border', 'boxSizing', 'whiteSpace', 'overflowWrap', 'wordBreak', 'tabSize', 'textIndent'] as const) {
+    mirror.style[p] = cs[p];
+  }
+  Object.assign(mirror.style, {
+    position: 'fixed', left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`,
+    overflow: 'hidden', opacity: '0', zIndex: '2147483647', whiteSpace: 'pre-wrap', overflowWrap: 'break-word',
+  });
+  mirror.textContent = ta.value + '\u200b';
+  document.body.appendChild(mirror);
+  mirror.scrollTop = ta.scrollTop;
+  try {
+    const d = document as Document & {
+      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+      caretRangeFromPoint?: (x: number, y: number) => Range | null;
+    };
+    const pos = d.caretPositionFromPoint?.(x, y);
+    const range = pos ? null : d.caretRangeFromPoint?.(x, y);
+    const node = pos?.offsetNode ?? range?.startContainer;
+    const offset = pos?.offset ?? range?.startOffset;
+    if (node && offset !== undefined && mirror.contains(node)) return Math.min(offset, ta.value.length);
+  } finally {
+    mirror.remove();
+  }
+  return ta.selectionStart;
 }
 
 const box: React.CSSProperties = {
@@ -47,12 +94,23 @@ function FileBox({ noteId, masterKey, fileId, name }: { noteId: string; masterKe
     e.preventDefault();
     setBusy(true);
     try {
-      const bytes = await decryptBytes(masterKey, (await api.getFile(noteId, fileId)).content);
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
-      a.download = name;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+      const picker = (window as unknown as {
+        showSaveFilePicker?: (o: { suggestedName: string }) => Promise<{ createWritable: () => Promise<WritableStream<Uint8Array>> }>;
+      }).showSaveFilePicker;
+      if (picker) {
+        // Stream straight to disk so very large files never sit fully in memory.
+        const writer = (await (await picker({ suggestedName: name })).createWritable()).getWriter();
+        for await (const part of readFile(noteId, masterKey, fileId)) await writer.write(part);
+        await writer.close();
+      } else {
+        const parts: Uint8Array<ArrayBuffer>[] = [];
+        for await (const part of readFile(noteId, masterKey, fileId)) parts.push(part);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob(parts, { type: 'application/octet-stream' }));
+        a.download = name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+      }
     } finally {
       setBusy(false);
     }
@@ -100,11 +158,15 @@ export default function Editor({ value, onChange, noteId, masterKey }: {
   const upload = useCallback(async (files: File[], at: number | null) => {
     let md = '';
     for (const f of files) {
-      if (f.size > MAX_BYTES) { setMsg(`${f.name} is larger than 20 MB`); continue; }
+      if (f.size > MAX_BYTES) { setMsg(`${f.name} is larger than 20 GB`); continue; }
       try {
-        setMsg(`Uploading ${f.name}…`);
-        const content = await encryptBytes(masterKey, new Uint8Array(await f.arrayBuffer()));
-        const { fileId } = await api.uploadFile(noteId, content);
+        const { fileId } = await api.startUpload(noteId);
+        const total = Math.max(1, Math.ceil(f.size / CHUNK));
+        for (let i = 0; i < total; i++) {
+          setMsg(`Uploading ${f.name}… ${Math.round((i / total) * 100)}%`);
+          const plain = new Uint8Array(await f.slice(i * CHUNK, (i + 1) * CHUNK).arrayBuffer());
+          await api.uploadChunk(noteId, fileId, i, await encryptRaw(masterKey, plain, aadFor(fileId, i, total)));
+        }
         const name = f.name.replace(/[[\]()<>]/g, '_');
         md += `${imageType(f.name) ? '!' : ''}[${name}](${SCHEME}${fileId})\n\n`;
         setMsg('');
@@ -164,7 +226,7 @@ export default function Editor({ value, onChange, noteId, masterKey }: {
         const files = [...e.dataTransfer.files];
         if (!files.length) return;
         e.preventDefault();
-        upload(files, textarea()?.selectionStart ?? null);
+        upload(files, offsetAtPoint(textarea(), e.clientX, e.clientY));
       }}
     >
       <input

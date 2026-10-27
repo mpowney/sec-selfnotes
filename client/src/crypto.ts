@@ -65,19 +65,24 @@ function concat(...parts: Uint8Array[]): Uint8Array<ArrayBuffer> {
 }
 
 /** SCE1 format: [magic "SCE1"][12-byte IV][AES-256-GCM ciphertext+tag], returned base64 encoded. */
-export async function encryptBytes(key: CryptoKey, bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+/** Encrypts to the raw SCE1 byte layout. `aad` binds the ciphertext to its context (e.g. file chunk position). */
+export async function encryptRaw(key: CryptoKey, bytes: Uint8Array<ArrayBuffer>, aad?: string): Promise<Uint8Array<ArrayBuffer>> {
   const iv = crypto.getRandomValues(new Uint8Array(IV_LEN));
-  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, bytes);
-  return b64(concat(MAGIC, iv, new Uint8Array(ct)));
+  const params: AesGcmParams = { name: 'AES-GCM', iv, ...(aad ? { additionalData: enc.encode(aad) } : {}) };
+  const ct = await crypto.subtle.encrypt(params, key, bytes);
+  return concat(MAGIC, iv, new Uint8Array(ct));
 }
 
-export async function decryptBytes(key: CryptoKey, content: string): Promise<Uint8Array<ArrayBuffer>> {
-  const data = unb64(content);
+export async function decryptRaw(key: CryptoKey, data: Uint8Array<ArrayBuffer>, aad?: string): Promise<Uint8Array<ArrayBuffer>> {
   if (dec.decode(data.subarray(0, 4)) !== 'SCE1') throw new Error('Not an SCE1 blob');
-  return new Uint8Array(
-    await crypto.subtle.decrypt({ name: 'AES-GCM', iv: data.subarray(4, 4 + IV_LEN) }, key, data.subarray(4 + IV_LEN)),
-  );
+  const params: AesGcmParams = {
+    name: 'AES-GCM', iv: data.subarray(4, 4 + IV_LEN), ...(aad ? { additionalData: enc.encode(aad) } : {}),
+  };
+  return new Uint8Array(await crypto.subtle.decrypt(params, key, data.subarray(4 + IV_LEN)));
 }
+
+export const encryptBytes = async (key: CryptoKey, bytes: Uint8Array<ArrayBuffer>) => b64(await encryptRaw(key, bytes));
+export const decryptBytes = (key: CryptoKey, content: string) => decryptRaw(key, unb64(content));
 
 export const encryptNote = (key: CryptoKey, markdown: string) => encryptBytes(key, enc.encode(markdown));
 

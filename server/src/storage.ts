@@ -15,6 +15,10 @@ export function categoryDir(category: string): string {
   return slug || DEFAULT_CATEGORY;
 }
 
+/** 16 MiB chunks * 1400 comfortably covers 20 GiB. */
+export const CHUNK_BYTES = 16 * 1024 * 1024;
+export const MAX_CHUNKS = 1400;
+
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export class NoteStorage {
@@ -58,20 +62,34 @@ export class NoteStorage {
     return path.join(this.uploadsDir(category, noteId), fileId);
   }
 
-  writeUpload(category: string, noteId: string, fileId: string, sce1: Buffer): void {
-    const file = this.uploadPath(category, noteId, fileId);
-    fs.mkdirSync(path.dirname(file), { recursive: true });
+  /** Uploaded files are stored as numbered, individually encrypted chunks in <uploads>/<fileId>/. */
+  initUpload(category: string, noteId: string, fileId: string): void {
+    fs.mkdirSync(this.uploadPath(category, noteId, fileId), { recursive: true });
+  }
+
+  private chunkPath(category: string, noteId: string, fileId: string, index: number): string {
+    if (!Number.isInteger(index) || index < 0 || index >= MAX_CHUNKS) throw new Error('Invalid chunk index');
+    return path.join(this.uploadPath(category, noteId, fileId), String(index));
+  }
+
+  writeChunk(category: string, noteId: string, fileId: string, index: number, sce1: Buffer): void {
+    const file = this.chunkPath(category, noteId, fileId, index);
+    if (!fs.existsSync(path.dirname(file))) throw new Error('Upload not initialised');
     const tmp = `${file}.tmp`;
-    fs.writeFileSync(tmp, serverEncrypt(this.cfg.systemKey, `${noteId}/${fileId}`, sce1), { mode: 0o600 });
+    fs.writeFileSync(tmp, serverEncrypt(this.cfg.systemKey, `${noteId}/${fileId}/${index}`, sce1), { mode: 0o600 });
     fs.renameSync(tmp, file);
   }
 
-  readUpload(category: string, noteId: string, fileId: string): Buffer {
+  readChunk(category: string, noteId: string, fileId: string, index: number): Buffer {
     return serverDecrypt(
       this.cfg.systemKey,
-      `${noteId}/${fileId}`,
-      fs.readFileSync(this.uploadPath(category, noteId, fileId)),
+      `${noteId}/${fileId}/${index}`,
+      fs.readFileSync(this.chunkPath(category, noteId, fileId, index)),
     );
+  }
+
+  chunkCount(category: string, noteId: string, fileId: string): number {
+    return fs.readdirSync(this.uploadPath(category, noteId, fileId)).filter((f) => /^\d+$/.test(f)).length;
   }
 
   move(oldCategory: string, newCategory: string, noteId: string): void {

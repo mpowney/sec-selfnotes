@@ -21,7 +21,9 @@ export function createApp(cfg: Config, db: Db) {
     res.setHeader('Referrer-Policy', 'no-referrer');
     next();
   });
-  app.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false }));
+  const isChunk = (url: string) => /^\/api\/notes\/[^/]+\/files\/[^/]+\/chunks\//.test(url);
+  app.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false, skip: (r) => isChunk(r.originalUrl) }));
+  app.use(rateLimit({ windowMs: 60_000, limit: 6000, standardHeaders: true, legacyHeaders: false, skip: (r) => !isChunk(r.originalUrl) }));
   app.use('/api/auth', rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false }));
   app.use('/api/admin', rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false }));
   // CSRF defence in addition to SameSite=strict cookies: state-changing requests must come from our origin
@@ -32,7 +34,7 @@ export function createApp(cfg: Config, db: Db) {
     }
     next();
   });
-  app.use(express.json({ limit: '30mb' }));
+  app.use(express.json({ limit: '10mb' }));
   app.use(
     session({
       name: 'sid',
