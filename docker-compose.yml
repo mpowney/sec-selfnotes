@@ -1,0 +1,16 @@
+services:
+  selfnotes:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      SYSTEM_ENCRYPTION_KEY: ${SYSTEM_ENCRYPTION_KEY:?set a 64-char hex key}
+      SESSION_SECRET: ${SESSION_SECRET:?set a session secret}
+      RP_ID: ${RP_ID:?e.g. notes.example.com}
+      RP_ORIGIN: ${RP_ORIGIN:?e.g. https://notes.example.com}
+      RP_NAME: ${RP_NAME:-Sec SelfNotes}
+      DATA_DIR: /data
+    volumes:
+      - ./data:/data
+    ports:
+      - "4000:4000"
