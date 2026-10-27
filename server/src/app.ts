@@ -32,7 +32,7 @@ export function createApp(cfg: Config, db: Db) {
     }
     next();
   });
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({ limit: '30mb' }));
   app.use(
     session({
       name: 'sid',

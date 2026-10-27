@@ -61,6 +61,10 @@ export const api = {
     req<NoteSummary>('POST', '/api/notes', { title, category, content }),
   updateNote: (id: string, title: string, category: string, content: string) =>
     req<NoteSummary>('PUT', `/api/notes/${id}`, { title, category, content }),
+  uploadFile: (noteId: string, content: string) =>
+    req<{ fileId: string }>('POST', `/api/notes/${noteId}/files`, { content }),
+  getFile: (noteId: string, fileId: string) =>
+    req<{ content: string }>('GET', `/api/notes/${noteId}/files/${fileId}`),
   deleteNote: (id: string) => req<{ ok: boolean }>('DELETE', `/api/notes/${id}`),
   logout: () => req<{ ok: boolean }>('POST', '/api/auth/logout', {}),
   authStatus: () => req<{ authenticated: boolean; username?: string; credentialId?: string }>('GET', '/api/auth/status'),

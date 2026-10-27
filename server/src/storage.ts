@@ -45,6 +45,33 @@ export class NoteStorage {
 
   remove(category: string, noteId: string): void {
     fs.rmSync(this.filePath(category, noteId), { force: true });
+    fs.rmSync(path.dirname(this.uploadsDir(category, noteId)), { recursive: true, force: true });
+  }
+
+  /** Per-note uploads folder: <category>/<noteId>/uploads */
+  uploadsDir(category: string, noteId: string): string {
+    return path.join(path.dirname(this.filePath(category, noteId)), noteId, 'uploads');
+  }
+
+  private uploadPath(category: string, noteId: string, fileId: string): string {
+    if (!UUID_RE.test(fileId)) throw new Error('Invalid file id');
+    return path.join(this.uploadsDir(category, noteId), fileId);
+  }
+
+  writeUpload(category: string, noteId: string, fileId: string, sce1: Buffer): void {
+    const file = this.uploadPath(category, noteId, fileId);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const tmp = `${file}.tmp`;
+    fs.writeFileSync(tmp, serverEncrypt(this.cfg.systemKey, `${noteId}/${fileId}`, sce1), { mode: 0o600 });
+    fs.renameSync(tmp, file);
+  }
+
+  readUpload(category: string, noteId: string, fileId: string): Buffer {
+    return serverDecrypt(
+      this.cfg.systemKey,
+      `${noteId}/${fileId}`,
+      fs.readFileSync(this.uploadPath(category, noteId, fileId)),
+    );
   }
 
   move(oldCategory: string, newCategory: string, noteId: string): void {
@@ -53,6 +80,8 @@ export class NoteStorage {
     if (from === to) return;
     fs.mkdirSync(path.dirname(to), { recursive: true });
     fs.renameSync(from, to);
+    const upFrom = path.dirname(this.uploadsDir(oldCategory, noteId));
+    if (fs.existsSync(upFrom)) fs.renameSync(upFrom, path.dirname(this.uploadsDir(newCategory, noteId)));
   }
 
   /**

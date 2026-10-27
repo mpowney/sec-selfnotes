@@ -122,6 +122,26 @@ export function notesRouter(db: Db, storage: NoteStorage): Router {
     res.json(toMeta(find(req.session.userId!, note.note_id)!));
   });
 
+  r.post('/notes/:noteId/files', (req, res) => {
+    const note = find(req.session.userId!, req.params.noteId);
+    if (!note) return res.status(404).json({ error: 'Note not found' });
+    const content = parseContent(req.body);
+    if (!content) return res.status(400).json({ error: 'content must be base64 SCE1 data' });
+    const fileId = randomUUID();
+    storage.writeUpload(note.category, note.note_id, fileId, content);
+    res.status(201).json({ fileId });
+  });
+
+  r.get('/notes/:noteId/files/:fileId', (req, res) => {
+    const note = find(req.session.userId!, req.params.noteId);
+    if (!note || !UUID_RE.test(req.params.fileId)) return res.status(404).json({ error: 'File not found' });
+    try {
+      res.json({ content: storage.readUpload(note.category, note.note_id, req.params.fileId).toString('base64') });
+    } catch {
+      res.status(404).json({ error: 'File not found' });
+    }
+  });
+
   r.delete('/notes/:noteId', (req, res) => {
     const note = find(req.session.userId!, req.params.noteId);
     if (!note) return res.status(404).json({ error: 'Note not found' });

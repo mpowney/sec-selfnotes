@@ -42,3 +42,20 @@ test('storage writes, moves, reads and reconciles', () => {
   assert.ok(storage.read('uncategorized', ID).equals(data));
   assert.equal(storage.reconcile(db).removed, 1);
 });
+
+test('uploads are encrypted per note, moved with the note and removed with it', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-'));
+  const storage = new NoteStorage({ dataDir, systemKey: randomBytes(32) } as any);
+  const FILE = '33333333-3333-4333-8333-333333333333';
+  const data = sce1();
+  storage.write('work', ID, data);
+  storage.writeUpload('work', ID, FILE, data);
+  const onDisk = path.join(dataDir, 'notes', 'work', ID, 'uploads', FILE);
+  assert.ok(fs.existsSync(onDisk));
+  assert.ok(!fs.readFileSync(onDisk).includes(data));
+  storage.move('work', 'home', ID);
+  assert.ok(storage.readUpload('home', ID, FILE).equals(data));
+  assert.throws(() => storage.readUpload('home', ID, '../x'));
+  storage.remove('home', ID);
+  assert.ok(!fs.existsSync(path.join(dataDir, 'notes', 'home', ID)));
+});

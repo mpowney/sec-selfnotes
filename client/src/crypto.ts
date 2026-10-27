@@ -65,15 +65,22 @@ function concat(...parts: Uint8Array[]): Uint8Array<ArrayBuffer> {
 }
 
 /** SCE1 format: [magic "SCE1"][12-byte IV][AES-256-GCM ciphertext+tag], returned base64 encoded. */
-export async function encryptNote(key: CryptoKey, markdown: string): Promise<string> {
+export async function encryptBytes(key: CryptoKey, bytes: Uint8Array<ArrayBuffer>): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(IV_LEN));
-  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(markdown));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, bytes);
   return b64(concat(MAGIC, iv, new Uint8Array(ct)));
 }
 
-export async function decryptNote(key: CryptoKey, content: string): Promise<string> {
+export async function decryptBytes(key: CryptoKey, content: string): Promise<Uint8Array<ArrayBuffer>> {
   const data = unb64(content);
   if (dec.decode(data.subarray(0, 4)) !== 'SCE1') throw new Error('Not an SCE1 blob');
-  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: data.subarray(4, 4 + IV_LEN) }, key, data.subarray(4 + IV_LEN));
-  return dec.decode(pt);
+  return new Uint8Array(
+    await crypto.subtle.decrypt({ name: 'AES-GCM', iv: data.subarray(4, 4 + IV_LEN) }, key, data.subarray(4 + IV_LEN)),
+  );
+}
+
+export const encryptNote = (key: CryptoKey, markdown: string) => encryptBytes(key, enc.encode(markdown));
+
+export async function decryptNote(key: CryptoKey, content: string): Promise<string> {
+  return dec.decode(await decryptBytes(key, content));
 }
