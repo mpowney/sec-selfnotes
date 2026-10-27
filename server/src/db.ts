@@ -35,11 +35,26 @@ export function openDb(dataDir: string): Db {
     );
     CREATE INDEX IF NOT EXISTS idx_notes_user_modified ON notes(user_id, modified_at DESC);
     CREATE INDEX IF NOT EXISTS idx_notes_user_category ON notes(user_id, category, modified_at DESC);
+    CREATE TABLE IF NOT EXISTS admin_accounts (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS user_logins (
+      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      last_login_at INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS sessions (
       sid TEXT PRIMARY KEY,
       data TEXT NOT NULL,
       expires INTEGER NOT NULL
     );
   `);
+  const credCols = db.prepare('PRAGMA table_info(credentials)').all() as { name: string }[];
+  if (!credCols.some((c) => c.name === 'name_encrypted')) {
+    // client-side (master key) encrypted authenticator display name
+    db.exec('ALTER TABLE credentials ADD COLUMN name_encrypted TEXT');
+  }
   return db;
 }
