@@ -37,7 +37,7 @@ async function conv(n, resolve, depth) {
     case 'a': {
       const t = (await kids(n, resolve, depth)).trim();
       const href = n.getAttribute('href');
-      return href && t ? `[${t}](${href.replace(/\)/g, '%29')})` : t;
+      return href && t ? `[${t}](${href.replace(/[()\\\s]/g, (c) => encodeURIComponent(c))})` : t;
     }
     case 'img': {
       const url = n.getAttribute('data-fullres-src') || n.getAttribute('src') || '';
@@ -78,7 +78,7 @@ async function table(t, resolve) {
   const rows = [];
   for (const tr of t.querySelectorAll('tr')) {
     const cells = [];
-    for (const c of tr.children) cells.push((await kids(c, resolve, 0)).trim().replace(/\|/g, '\\|').replace(/\n+/g, ' '));
+    for (const c of tr.children) cells.push((await kids(c, resolve, 0)).trim().replace(/[\\|]/g, '\\$&').replace(/\n+/g, ' '));
     rows.push(cells);
   }
   if (!rows.length) return '';
