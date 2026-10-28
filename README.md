@@ -23,6 +23,8 @@ An end-to-end encrypted note-taking application with YubiKey-based authenticatio
 1. *Client (E2E)*: a random master key is wrapped (AES-256-GCM) with a key derived from the authenticator's WebAuthn PRF output; one wrapped copy per credential is stored in SQLite. Each note's markdown (including its front-matter metadata: title, category, created, modified, tags) is encrypted in the browser as `SCE1` = `["SCE1"][12-byte IV][AES-256-GCM ciphertext]`. The server rejects anything that is not SCE1 and never sees plaintext.
 2. *Server*: the SCE1 blob is encrypted again with a per-note AES-256-GCM key derived via HKDF-SHA256 from `SYSTEM_ENCRYPTION_KEY` and the note id, then written to `DATA_DIR/notes/<category>/<noteId>.md`.
 
+*Password managers (e.g. Bitwarden passkeys)*: passkeys without PRF support are accepted. The master key is then wrapped with a passphrase (PBKDF2-SHA-256, 600k iterations, random salt; stored with a `pw1:` prefix) that you keep in your password manager and enter at sign-in.
+
 SQLite stores only users, credentials/wrapped keys and note metadata (id, title, category, timestamps). On startup the notes directory is scanned and DB rows with missing files are removed.
 
 ## API
