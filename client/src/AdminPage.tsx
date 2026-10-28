@@ -36,7 +36,7 @@ function AdminLogin({ onLogin }: { onLogin: (username: string) => void }) {
         <Text>Sign in with your admin credentials. On first start the admin password is printed once in the server log.</Text>
         <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Field label="Username" required>
-            <Input value={username} onChange={(_, d) => setUsername(d.value)} autoComplete="username" autoCapitalize="none" disabled={busy} />
+            <Input value={username} onChange={(_, d) => setUsername(d.value)} autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} disabled={busy} />
           </Field>
           <Field label="Password" required>
             <Input type="password" value={password} onChange={(_, d) => setPassword(d.value)} autoComplete="current-password" disabled={busy} />
