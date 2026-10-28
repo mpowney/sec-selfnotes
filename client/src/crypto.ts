@@ -89,3 +89,28 @@ export const encryptNote = (key: CryptoKey, markdown: string) => encryptBytes(ke
 export async function decryptNote(key: CryptoKey, content: string): Promise<string> {
   return dec.decode(await decryptBytes(key, content));
 }
+
+const PW_PREFIX = 'pw1:';
+const PW_ITERATIONS = 600_000;
+
+export const isPassphraseWrapped = (wrapped: string): boolean => wrapped.startsWith(PW_PREFIX);
+
+async function passphraseSecret(passphrase: string, salt: Uint8Array<ArrayBuffer>): Promise<ArrayBuffer> {
+  const base = await crypto.subtle.importKey('raw', enc.encode(passphrase.normalize('NFKC')), 'PBKDF2', false, ['deriveBits']);
+  return crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: PW_ITERATIONS }, base, 256);
+}
+
+/** Wraps the master key (new or existing) with a passphrase, e.g. one kept in a password manager such as Bitwarden. */
+export async function wrapWithPassphrase(passphrase: string, masterKey?: CryptoKey): Promise<{ masterKey: CryptoKey; wrapped: string }> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const secret = await passphraseSecret(passphrase, salt);
+  const res = masterKey
+    ? { masterKey, wrapped: await wrapMasterKey(secret, masterKey) }
+    : await createWrappedMasterKey(secret);
+  return { masterKey: res.masterKey, wrapped: `${PW_PREFIX}${b64(salt)}:${res.wrapped}` };
+}
+
+export async function unwrapWithPassphrase(passphrase: string, wrapped: string): Promise<CryptoKey> {
+  const [, salt, inner] = wrapped.split(':');
+  return unwrapMasterKey(await passphraseSecret(passphrase, unb64(salt)), inner);
+}
