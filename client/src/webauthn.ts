@@ -17,7 +17,7 @@ function askPassphrase(message: string, confirm: boolean, username?: string): Pr
     const mk = (autocomplete: string, label: string) => {
       const i = document.createElement('input');
       i.type = 'password';
-      i.autocomplete = autocomplete;
+      i.autocomplete = autocomplete as AutoFill;
       i.placeholder = label;
       i.required = true;
       i.style.cssText = 'padding:6px';
