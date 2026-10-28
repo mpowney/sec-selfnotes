@@ -36,7 +36,7 @@ export default function AuthPage({ onAuthenticated }: { onAuthenticated: (userna
         </TabList>
         <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Field label="Username" required>
-            <Input value={username} onChange={(_, d) => setUsername(d.value)} autoComplete="username webauthn" />
+            <Input value={username} onChange={(_, d) => setUsername(d.value)} autoComplete="username webauthn" autoCapitalize="none" autoCorrect="off" spellCheck={false} />
           </Field>
           {error && (
             <MessageBar intent="error"><MessageBarBody>{error}</MessageBarBody></MessageBar>
